@@ -1,0 +1,6 @@
+pattern,n,m,spasm_treewidth,n_minus_m,dataset_id,graph_pool_hash,n_seeds,n_graphs_per_seed,mean_accuracy,sample_std
+C4_plus_pendant,5,5,2,0,er_final_ood_C4_plus_pendant_v5_1,a77e516692db8490e2c9c8161d875bda37550a3f5165c90b8b1a4eca8099092e,5,400,97.6,0.9937303457175907
+bull,5,5,2,0,er_final_ood_bull_v5_1,b2c0e9dbda6ca58b283afdd719ae3ac5c396d073fffc0c6aeb7c9f7a95c63527,5,400,97.9,0.8944271909999141
+induced_C6,6,6,3,0,er_final_ood_induced_C6_v5_1,fa64fed34ace8343ce9e22f91e1051bf80451902f7e202563d9d61d3e76edb2b,5,400,71.3,5.813239200308207
+paw,4,4,2,0,er_final_ood_paw_v5_1,c5f8c342a7dd95f025ac2774f8b6f5cdc70e723f97a3888c49891aed67aeea36,5,400,98.4,0.6982120021884455
+tadpole,5,5,2,0,er_final_ood_tadpole_v5_1,d89c925d0fb4b9ce13e7681b12ed73e9c86d4bda332a943499fb4122124d8d13,5,400,98.1,0.8023403267940583

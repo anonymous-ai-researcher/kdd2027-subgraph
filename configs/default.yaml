@@ -1,0 +1,36 @@
+# Default configuration: the grokked model reported in the main table.
+# Every value here was selected on the in-distribution and scale-validation
+# splits only; the Final-OOD set was touched once, after freezing.
+
+model:
+  d_model: 64
+  n_heads: 4
+  n_layers: 2
+  d_ff: 256
+  d_pos: 24            # per-axis code width, so 2*24 = 48 of 64 dims
+  dropout: 0.0
+  code_seed: 0         # fixed axial codes; never trained
+
+training:
+  optimizer: AdamW
+  lr: 1.0e-3
+  weight_decay: 1.0    # lambda; <= 0.1 does not grok, >= 3 destroys both circuits
+  betas: [0.9, 0.98]
+  eps: 1.0e-8
+  batch_size: 2000     # full batch
+  steps: 100000        # ~100x past training-loss convergence
+  loss: mse
+
+data:
+  train_graphs: 2000
+  eval_graphs_per_split: 400
+  train_sizes: [15, 25]              # contiguous
+  scale_val_sizes: [26, 30, 35]      # discrete
+  final_ood_sizes: [40, 50, 60, 70, 80, 90, 100]
+  mean_degree_range:
+    3: [4, 8]
+    4: [3, 7]
+    5: [3, 6]
+    6: [3, 6]
+
+seeds: [42, 123, 456, 789, 1024]
