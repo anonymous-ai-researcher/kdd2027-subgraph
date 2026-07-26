@@ -258,9 +258,3 @@ The one component we would flag for downstream care is the
 internalized a rule rather than a lookup table, and we have validated it only
 on the counting tasks studied here. We would caution against treating it as a
 general certificate of algorithmic generalization without further evidence.
-
----
-
-## License
-
-MIT
