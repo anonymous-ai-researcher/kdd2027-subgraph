@@ -1,6 +1,7 @@
 # Default configuration: the grokked model reported in the main table.
 # Every value here was selected on the in-distribution and scale-validation
-# splits only; the Final-OOD set was touched once, after freezing.
+# splits only; the Final-OOD set is never used for any design or selection
+# decision and is evaluated once, by scripts/evaluate.py, after training.
 
 model:
   d_model: 64
@@ -14,7 +15,7 @@ model:
 training:
   optimizer: AdamW
   lr: 1.0e-3
-  weight_decay: 1.0    # lambda; <= 0.1 does not grok, >= 3 destroys both circuits
+  weight_decay: 1.0    # lambda; the window [0.8, 2.0] groks at every k (Table 17); <= 0.2 never groks, >= 3 degrades
   betas: [0.9, 0.98]
   eps: 1.0e-8
   batch_size: 2000     # full batch
@@ -27,10 +28,11 @@ data:
   train_sizes: [15, 25]              # contiguous
   scale_val_sizes: [26, 30, 35]      # discrete
   final_ood_sizes: [40, 50, 60, 70, 80, 90, 100]
-  mean_degree_range:
-    3: [4, 8]
-    4: [3, 7]
-    5: [3, 6]
-    6: [3, 6]
+  max_n: 100                         # padding cap; not read from any split
+  mean_degree_range:                 # Appx. G.1, inclusive integer ranges
+    3: [4, 7]
+    4: [3, 5]
+    5: [2, 4]
+    6: [2, 3]
 
 seeds: [42, 123, 456, 789, 1024]

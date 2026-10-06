@@ -74,10 +74,12 @@ def main() -> None:
     args = ap.parse_args()
 
     train_set = load_cell(args.data / f"train_k{args.k}_ER.npz", args.k, "train")
-    ood_set = load_cell(
-        args.data / f"final_ood_k{args.k}_ER.npz", args.k, "final_ood"
+    # The training loop monitors SCALE_VAL only; Final-OOD is evaluated once,
+    # after training, by scripts/evaluate.py.
+    val_set = load_cell(
+        args.data / f"scale_val_k{args.k}_ER.npz", args.k, "scale_val"
     )
-    print(f"train {len(train_set)} graphs | final-OOD {len(ood_set)} graphs")
+    print(f"train {len(train_set)} graphs | scale-val {len(val_set)} graphs")
 
     mc = ModelConfig(
         d_model=args.d_model,
@@ -97,13 +99,13 @@ def main() -> None:
 
     print(f"parameters: {CountingTransformer(mc).parameter_count():,}")
 
-    model, traj = train(train_set, ood_set, mc, tc, args.out)
+    model, traj = train(train_set, val_set, mc, tc, args.out)
 
     groks, step = detect_complexity_collapse(traj)
     verdict = {
         "groks": groks,
         "collapse_step": step,
-        "final_ood_accuracy": traj[-1]["ood_accuracy"] if traj else None,
+        "scale_val_accuracy": traj[-1]["scale_val_accuracy"] if traj else None,
         "peak_parameter_norm": max(r["parameter_norm"] for r in traj),
         "final_parameter_norm": traj[-1]["parameter_norm"] if traj else None,
     }
@@ -112,7 +114,7 @@ def main() -> None:
     print(f"\ngroks: {groks}")
     if groks:
         print(f"complexity collapse at step {step:,}")
-    print(f"final OOD exact match: {verdict['final_ood_accuracy']:.2f}%")
+    print(f"final scale-val exact match: {verdict['scale_val_accuracy']:.2f}%  (run scripts/evaluate.py for Final-OOD)")
 
 
 if __name__ == "__main__":

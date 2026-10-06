@@ -121,7 +121,7 @@ class CountingTransformer(nn.Module):
             dropout=c.dropout,
             activation="relu",
             batch_first=True,
-            norm_first=False,
+            norm_first=True,   # pre-norm, as in the paper (Sec. 3.2)
         )
         self.encoder = nn.TransformerEncoder(layer, num_layers=c.n_layers)
         self.readout = nn.Linear(c.d_model, 1)

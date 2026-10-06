@@ -29,12 +29,20 @@ Topology = Literal["ER", "BA", "SBM", "WS"]
 # Per-k mean-degree ranges.  Larger patterns need denser graphs to give a
 # non-degenerate count distribution; smaller patterns saturate if the graph
 # is too dense.
+# Values are those of Appx. G.1 of the paper (inclusive integer ranges).
 DEGREE_RANGE: dict[int, tuple[int, int]] = {
-    3: (4, 8),
-    4: (3, 7),
-    5: (3, 6),
-    6: (3, 6),
+    3: (4, 7),
+    4: (3, 5),
+    5: (2, 4),
+    6: (2, 3),
 }
+
+# Split index used to salt generation seeds, so that two splits sharing a
+# size range (train and id both start at N=15) never share a seed stream.
+SPLIT_INDEX: dict[str, int] = {"train": 0, "id": 1, "scale_val": 2, "final_ood": 3}
+
+# Hard cap on graph size, used for padding; never read from a test split.
+MAX_N: int = 100
 
 # Evaluation splits.  ID is a contiguous range; the two out-of-distribution
 # splits sample a fixed discrete ladder of sizes.
@@ -69,7 +77,9 @@ class GraphSample:
 
 
 def _target_edges(n: int, mean_degree: float) -> int:
-    return int(math.floor(mean_degree * n / 2))
+    # The shipped data uses round(), not floor(): 7,200/7,200 ER graphs in the
+    # registry satisfy edge_count == round(mean_degree * n / 2).
+    return int(round(mean_degree * n / 2))
 
 
 def _match_edge_count(g: nx.Graph, target: int, rng: random.Random) -> nx.Graph:
@@ -99,7 +109,7 @@ def generate_graph(
 ) -> nx.Graph:
     """
     Generate one graph with the requested topology and an edge count that
-    matches floor(mean_degree * n / 2) exactly.
+    matches round(mean_degree * n / 2) exactly.
 
     Every family is post-processed to hit the same edge count, so a topology
     comparison isolates *structure* rather than density.  Without this step a
@@ -110,8 +120,11 @@ def generate_graph(
     target = _target_edges(n, mean_degree)
 
     if topology == "ER":
-        p = mean_degree / (n - 1)
-        g = nx.gnp_random_graph(n, p, seed=seed)
+        # Exactly the generator behind the shipped data: G(n, m) with
+        # m = round(mean_degree * n / 2) and the registry's generation_seed.
+        # Verified on the shipped registry: every ER graph's edge count and
+        # true count are reproduced (see scripts/regenerate_from_registry.py).
+        g = nx.gnm_random_graph(n, target, seed=seed)
 
     elif topology == "BA":
         # m edges per new node; m = round(d_bar / 2) reproduces the degree.
@@ -191,14 +204,20 @@ def generate_split(
         )
 
 
-def deduplicate(samples: list[GraphSample]) -> list[GraphSample]:
+def deduplicate(
+    samples: list[GraphSample], seen: set[str] | None = None
+) -> list[GraphSample]:
     """
     Remove isomorphic duplicates using the Weisfeiler-Lehman graph hash.
 
     Duplicates across the train/test boundary would let memorization look
-    like generalization, so this runs before any split is written to disk.
+    like generalization, so the caller passes ONE `seen` set shared across
+    every cell, train first, so that no evaluation graph is isomorphic to a
+    training graph (Appx. G.1 of the paper).  With `seen=None` the function
+    deduplicates within the given list only.
     """
-    seen: set[str] = set()
+    if seen is None:
+        seen = set()
     out: list[GraphSample] = []
 
     for s in samples:

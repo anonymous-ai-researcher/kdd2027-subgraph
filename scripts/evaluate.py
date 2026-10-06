@@ -61,6 +61,22 @@ def main() -> None:
             continue
         samples = load_cell(path, args.k, split)
         max_len = 1 + max(s.n_nodes for s in samples) ** 2
+        if split == "final_ood":
+            # Table 1 reports the 400-graph main subset; k in {3, 6} also ship
+            # a 200-per-N pool (1,400 graphs) used for the per-N figures.
+            flags = np.load(path, allow_pickle=True)
+            main = (flags["main_eval_included"].astype(bool)
+                    if "main_eval_included" in flags.files
+                    else np.ones(len(samples), dtype=bool))
+            main_samples = [s for s, f in zip(samples, main) if f]
+            acc = exact_match(model, main_samples, max_len, device)
+            per_split[split] = acc
+            print(f"  {split:>10s}  {acc:6.2f}%   (main subset, n={len(main_samples)})")
+            if len(main_samples) < len(samples):
+                acc_pool = exact_match(model, samples, max_len, device)
+                per_split["final_ood_per_n_pool"] = acc_pool
+                print(f"  {'per-N pool':>10s}  {acc_pool:6.2f}%   (n={len(samples)})")
+            continue
         acc = exact_match(model, samples, max_len, device)
         per_split[split] = acc
         print(f"  {split:>10s}  {acc:6.2f}%")

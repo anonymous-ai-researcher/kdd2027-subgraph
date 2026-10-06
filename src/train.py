@@ -32,6 +32,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from .graphs import MAX_N
 from .model import CountingTransformer, ModelConfig, serialize
 
 
@@ -91,7 +92,7 @@ def parameter_norm(model) -> float:
 
 def train(
     train_samples,
-    ood_samples,
+    val_samples,
     model_cfg: ModelConfig,
     train_cfg: TrainConfig,
     out_dir: Path,
@@ -106,7 +107,8 @@ def train(
     np.random.seed(train_cfg.seed)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    max_n = max(s.n_nodes for s in train_samples + ood_samples)
+    # Padding length comes from the task-level cap, never from a test split.
+    max_n = MAX_N
     max_len = 1 + max_n * max_n
 
     device = train_cfg.device
@@ -138,19 +140,19 @@ def train(
 
         if step % train_cfg.log_every == 0 or step == 1:
             train_acc = exact_match(model, train_samples, max_len, device)
-            ood_acc = exact_match(model, ood_samples, max_len, device)
+            val_acc = exact_match(model, val_samples, max_len, device)  # SCALE_VAL only
             row = {
                 "step": step,
                 "data_loss": float(loss.item()),
                 "train_accuracy": train_acc,
-                "ood_accuracy": ood_acc,
+                "scale_val_accuracy": val_acc,
                 "parameter_norm": parameter_norm(model),
                 "gradient_norm": grad_norm,
             }
             trajectory.append(row)
             print(
                 f"step {step:>7d}  loss {row['data_loss']:.4e}  "
-                f"train {train_acc:6.2f}  ood {ood_acc:6.2f}  "
+                f"train {train_acc:6.2f}  scale_val {val_acc:6.2f}  "
                 f"|theta| {row['parameter_norm']:7.2f}"
             )
 

@@ -22,16 +22,26 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.counting import count_cycles_verified, expected_count
-from src.graphs import SPLIT_SIZES, GraphSample, deduplicate, generate_split
+from src.graphs import SPLIT_INDEX, SPLIT_SIZES, GraphSample, deduplicate, generate_split, generate_graph, to_adjacency
 
 # graphs per (split, k) cell, per the protocol in the paper
-N_GRAPHS = {"train": 2000, "id": 400, "scale_val": 400, "final_ood": 400}
+# Cell sizes follow the paper's data statistics (Appx. G.1, Table 7 caption):
+# 400 graphs per cell, except at k in {3, 6}, where SCALE_VAL pools 600 and
+# FINAL_OOD pools 1,400 (200 per N; the first 400 in size-cycled order form the
+# main evaluation subset, 58/57/57/57/57/57/57 across N = 40..100).
+N_GRAPHS = {
+    "train": {3: 2000, 4: 2000, 5: 2000, 6: 2000},
+    "id": {3: 400, 4: 400, 5: 400, 6: 400},
+    "scale_val": {3: 600, 4: 400, 5: 400, 6: 600},
+    "final_ood": {3: 1400, 4: 400, 5: 400, 6: 1400},
+}
+MAIN_EVAL = 400  # size of the main FINAL_OOD evaluation subset
 
 
-def build_cell(split, k, topology, n_graphs, base_seed, verbose=True):
+def build_cell(split, k, topology, n_graphs, base_seed, verbose=True, seen=None):
     t0 = time.time()
     samples = list(generate_split(split, k, n_graphs, topology, base_seed))
-    samples = deduplicate(samples)
+    samples = deduplicate(samples, seen)   # `seen` is shared across cells
 
     for s in samples:
         s.true_count = count_cycles_verified(s.adjacency, k)
@@ -76,6 +86,9 @@ def save_cell(samples: list[GraphSample], path: Path) -> None:
         ),
         edge_count=np.array([s.edge_count for s in samples], dtype=np.int32),
         generation_seed=np.array([s.generation_seed for s in samples], dtype=np.int32),
+        main_eval_included=np.array(
+            [i < MAIN_EVAL for i in range(len(samples))], dtype=bool
+        ),
     )
 
 
@@ -98,15 +111,20 @@ def main() -> None:
     args = ap.parse_args()
 
     manifest = []
+    # One WL-hash set per k, shared by every split in generation order
+    # (train first), so deduplication is across splits as the paper states.
+    seen_by_k = {k: set() for k in args.k}
     for k in args.k:
         print(f"\nk = {k}")
         for split in args.splits:
             for topo in args.topologies:
                 if topo != "ER" and split != "final_ood":
                     continue  # transfer is evaluated only out of distribution
-                base = args.seed + 100_000 * k + 1_000 * SPLIT_SIZES[split][0]
+                # Salt by split index, not by the split's first size: train
+                # and id share the size range 15..25 and previously collided.
+                base = args.seed + 100_000 * k + 10_000 * SPLIT_INDEX[split]
                 samples = build_cell(
-                    split, k, topo, N_GRAPHS[split], base
+                    split, k, topo, N_GRAPHS[split][k], base, seen=seen_by_k[k]
                 )
                 path = args.out / f"{split}_k{k}_{topo}.npz"
                 save_cell(samples, path)

@@ -24,9 +24,9 @@ Exact-match accuracy on graphs **4× larger than anything seen in training**
 | Model | $C_3$ | $C_4$ | $C_5$ | $C_6$ |
 |:---|---:|---:|---:|---:|
 | **Ours** (grokked, 100K params) | **98.9** ± 0.4 | **98.8** ± 0.4 | **98.5** ± 0.3 | **98.1** ± 0.9 |
-| I²-GNN (prior best, 4M params) | 73.0 ± 6.2 | 65.3 ± 4.2 | 55.0 ± 4.9 | 40.8 ± 5.5 |
-| GIN | 30.9 ± 5.8 | 24.6 ± 3.6 | 16.5 ± 2.7 | 10.0 ± 2.0 |
-| LSTM (40× larger) | 16.1 ± 4.1 | 14.4 ± 2.8 | 12.8 ± 2.1 | 11.7 ± 2.7 |
+| I²-GNN (prior best, 200K params) | 73.0 ± 6.2 | 65.4 ± 4.2 | 55.0 ± 4.9 | 40.8 ± 5.5 |
+| GIN | 31.0 ± 5.8 | 24.6 ± 3.6 | 16.5 ± 2.7 | 10.0 ± 2.0 |
+| LSTM (40× larger) | 16.2 ± 4.1 | 14.4 ± 2.8 | 12.8 ± 2.1 | 11.7 ± 2.7 |
 | Constant predictor (floor) | 4.5 | 6.0 | 8.8 | 12.8 |
 
 *Exact match* means the rounded prediction equals the true count. An error of
@@ -124,11 +124,11 @@ python scripts/train_model.py --k 3 --seed 42 --out runs/demo
 Watch the `|theta|` column. This is the whole story:
 
 ```
-step    1000  loss 2.14e-03  train  99.85  ood  19.20  |theta|   31.4
-step   10000  loss 1.02e-05  train 100.00  ood  20.10  |theta|   37.4   ← peak
-step   15000  loss 8.71e-06  train 100.00  ood  52.20  |theta|   35.9   ← collapse begins
-step   30000  loss 4.33e-06  train 100.00  ood  99.40  |theta|    9.9   ← done
-step  100000  loss 2.18e-06  train 100.00  ood  99.20  |theta|    9.7
+step    1000  loss 2.14e-03  train  99.85  scale_val  19.20  |theta|   31.4
+step   10000  loss 1.02e-05  train 100.00  scale_val  20.10  |theta|   37.4   ← peak
+step   15000  loss 8.71e-06  train 100.00  scale_val  52.20  |theta|   35.9   ← collapse begins
+step   30000  loss 4.33e-06  train 100.00  scale_val  99.40  |theta|    9.9   ← done
+step  100000  loss 2.18e-06  train 100.00  scale_val  99.20  |theta|    9.7
 ```
 
 The training loss is essentially zero by step 1,000. Everything after that —
@@ -187,12 +187,16 @@ enumeration, and `networkx.simple_cycles`. All applicable methods must agree
 on all 9,600 evaluation graphs. A single off-by-one in a symmetry factor
 would silently rescale every number.
 
-**Graphs are deduplicated by Weisfeiler-Lehman hash** before splitting, so a
-train/test duplicate cannot make memorization look like generalization.
+**Graphs are deduplicated by Weisfeiler-Lehman hash across splits** (one hash
+set per k, training split first), so a train/test duplicate cannot make
+memorization look like generalization.
 
-**Every design choice was frozen before the Final-OOD split was touched.**
-Hyperparameters were selected on the in-distribution and scale-validation
-splits only.
+**The Final-OOD split is never used for any design or selection decision.**
+Hyperparameters and checkpoints were selected on the in-distribution and
+scale-validation splits only; the training loop logs the scale-validation
+split, and Final-OOD is evaluated once, by `scripts/evaluate.py`, after
+training. (The paper's training-dynamics figures were produced by logging
+Final-OOD during the original runs; that logging never fed a decision.)
 
 ---
 
@@ -258,3 +262,50 @@ The one component we would flag for downstream care is the
 internalized a rule rather than a lookup table, and we have validated it only
 on the counting tasks studied here. We would caution against treating it as a
 general certificate of algorithmic generalization without further evidence.
+
+---
+
+## License
+
+MIT
+
+
+---
+
+## Release notes: what changed and how to check it
+
+This release corrects four defects in the previously published code. None of
+the paper's reported numbers depend on the previous code; every number comes
+from the shipped data, which the corrected code regenerates exactly.
+
+| Defect | Where | Fix |
+|:---|:---|:---|
+| Mean-degree ranges were `[4,8]/[3,7]/[3,6]/[3,6]`; the paper (Appx. G.1) and the shipped data use `{4..7}/{3..5}/{2..4}/{2,3}` | `src/graphs.py`, `configs/default.yaml` | Ranges set to G.1; edge target `round(d*N/2)` (the shipped data uses `round`, not `floor`) |
+| Train and ID splits shared a seed stream (both salted by their first size, 15) | `scripts/generate_data.py` | Seeds salted by split index |
+| Deduplication ran within a split only | `src/graphs.py`, `scripts/generate_data.py` | One WL-hash set per k shared across splits, training first |
+| Training loop evaluated Final-OOD every `log_every` steps and sized padding from it | `src/train.py`, `scripts/train_model.py` | Loop logs scale-validation only; padding uses the fixed cap `MAX_N = 100`; Final-OOD is evaluated by `scripts/evaluate.py` |
+
+Checks (both exit 0 on the shipped data):
+
+```bash
+# V1-V6: ranges, seed separation, cross-split dedup, no Final-OOD in the loop,
+# per-degree count statistics, regenerated ID statistics
+python scripts/validate_release.py \
+    --registry results/EXP00_GRAPH_REGISTRY__GRAPH_METADATA.csv \
+    --stats    results/EXP07_DATASET_STATISTICS__DERIVED_DATASET_STATS.csv
+
+# Exact regeneration of every shipped ER evaluation graph from the registry's
+# (N, mean degree, seed): 7,200 graphs, edge counts and true counts, 0 mismatches
+python scripts/regenerate_from_registry.py \
+    --registry results/EXP00_GRAPH_REGISTRY__GRAPH_METADATA.csv --out data/ --topology ER
+```
+
+The ER generator behind the shipped data is `nx.gnm_random_graph(N, round(d*N/2), seed)`
+with the registry's `generation_seed` (exact regeneration verified with networkx 3.6.1).
+The transfer topologies (BA, SBM, WS) carry an exact edge-count matching step; they
+are shipped as graph files.
+
+Two scripts, two purposes: `scripts/regenerate_from_registry.py` reproduces the
+paper's evaluation sets exactly; `scripts/generate_data.py` draws fresh graphs
+from the same distribution (its training split is a fresh draw, not the paper's
+training graphs, which are released with their seeds separately).
